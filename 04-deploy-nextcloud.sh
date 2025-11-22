@@ -10,12 +10,12 @@ MYSQL_PASSWORD=$(grep MYSQL_PASSWORD /data_raid1/containers/secrets/mysql-nextcl
 # 生成 SSL 证书（如果不存在）
 if [ ! -f "/data_raid1/containers/nextcloud/ssl/nextcloud.crt" ]; then
     echo "生成 SSL 证书..."
-    sudo mkdir -p /data_raid1/containers/nextcloud/ssl
+    mkdir -p /data_raid1/containers/nextcloud/ssl
     cd /data_raid1/containers/nextcloud/ssl
-    sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
       -keyout nextcloud.key -out nextcloud.crt \
       -subj "/C=CN/ST=Beijing/L=Beijing/O=YourOrganization/CN=ic.ismd-nemo.xyz"
-    sudo chown 1000:1000 nextcloud.key nextcloud.crt
+    chown 1000:1000 nextcloud.key nextcloud.crt
 fi
 
 # 停止并清理旧容器
@@ -49,8 +49,8 @@ echo "Nextcloud 管理员密码: $NC_ADMIN_PASSWORD"
 
 # 清理旧的配置和数据（确保重新安装）
 echo "清理旧配置..."
-sudo rm -rf /data_raid1/containers/nextcloud/config/*
-sudo rm -rf /data_raid1/containers/nextcloud/data/*
+rm -rf /data_raid1/containers/nextcloud/config/*
+rm -rf /data_raid1/containers/nextcloud/data/*
 
 # 首先启动一个基础容器（不自动安装）
 echo "启动 Nextcloud 基础容器..."

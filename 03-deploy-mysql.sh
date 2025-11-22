@@ -27,7 +27,7 @@ while true; do
 done
 
 # 创建 MySQL 配置文件
-sudo tee /data_raid1/containers/mysql/config/custom.cnf > /dev/null <<'EOF'
+cat > /data_raid1/containers/mysql/config/custom.cnf <<'EOF'
 [mysqld]
 default_authentication_plugin=mysql_native_password
 bind-address = 0.0.0.0

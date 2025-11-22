@@ -26,7 +26,7 @@ case "$1" in
         ;;
     backup)
         echo "备份数据..."
-        sudo tar -czf /data_raid1/containers/backups/backup-$(date +%Y%m%d).tar.gz /data_raid1/containers/nextcloud /data_raid1/containers/mysql
+        tar -czf /data_raid1/containers/backups/backup-$(date +%Y%m%d).tar.gz /data_raid1/containers/nextcloud /data_raid1/containers/mysql
         echo "备份完成: /data_raid1/containers/backups/backup-$(date +%Y%m%d).tar.gz"
         ;;
     update)
