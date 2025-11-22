@@ -2,9 +2,11 @@
 echo "=== 清理旧环境 ==="
 
 # 停止并删除旧容器
-podman stop nextcloud mysql 2>/dev/null
-podman rm nextcloud mysql 2>/dev/null
-podman network rm nextcloud-network 2>/dev/null
+MYSQL_CONTAINER_NAME=${MYSQL_CONTAINER_NAME:-mysql}
+NEXTCLOUD_CONTAINER_NAME=${NEXTCLOUD_CONTAINER_NAME:-nextcloud}
+podman stop "$NEXTCLOUD_CONTAINER_NAME" "$MYSQL_CONTAINER_NAME" 2>/dev/null || true
+podman rm "$NEXTCLOUD_CONTAINER_NAME" "$MYSQL_CONTAINER_NAME" 2>/dev/null || true
+podman network rm nextcloud-network 2>/dev/null || true
 
 # 备份并删除旧数据目录
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -7,6 +7,7 @@ if [ -f "$SCRIPT_DIR/config.env" ]; then
   # shellcheck disable=SC1090
   . "$SCRIPT_DIR/config.env"
 fi
+MYSQL_CONTAINER_NAME=${MYSQL_CONTAINER_NAME:-mysql}
 
 # 拉取 MySQL 镜像
 echo "拉取 MySQL 镜像..."
@@ -45,6 +46,10 @@ skip-name-resolve
 default-auth=mysql_native_password
 EOF
 
+# 停止并清理旧容器
+podman stop "$MYSQL_CONTAINER_NAME" 2>/dev/null || true
+podman rm "$MYSQL_CONTAINER_NAME" 2>/dev/null || true
+
 # 部署 MySQL
 echo "启动 MySQL 容器..."
 
@@ -55,7 +60,7 @@ if [ -n "$MYSQL_EXPOSE_PORT" ]; then
 fi
 
 podman run -d \
-  --name mysql \
+  --name "$MYSQL_CONTAINER_NAME" \
   --network nextcloud-network \
   --restart unless-stopped \
   "${MYSQL_PORT_ARGS[@]}" \
@@ -75,10 +80,10 @@ sleep 30
 
 # 验证 MySQL 连接
 echo "验证 MySQL 连接..."
-podman exec mysql mysql -u root -p$MYSQL_ROOT_PASSWORD -e "SHOW DATABASES;" && \
+podman exec "$MYSQL_CONTAINER_NAME" mysql -u root -p$MYSQL_ROOT_PASSWORD -e "SHOW DATABASES;" && \
 echo "MySQL 部署成功！" || echo "MySQL 连接失败，请检查日志"
 
-echo "MySQL 容器名称: mysql"
+echo "MySQL 容器名称: $MYSQL_CONTAINER_NAME"
 if [ -n "$MYSQL_EXPOSE_PORT" ]; then
   echo "MySQL 外部端口: $MYSQL_EXPOSE_PORT"
 else
@@ -88,11 +93,11 @@ echo "Nextcloud 数据库: nextcloud"
 
 # 修改认证插件
 echo "修改 nextcloud 用户认证插件..."
-podman exec mysql mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "
+podman exec "$MYSQL_CONTAINER_NAME" mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "
 ALTER USER 'nextcloud'@'%' IDENTIFIED WITH mysql_native_password BY '$MYSQL_PASSWORD';
 FLUSH PRIVILEGES;
 "
 
 # 验证修改
 echo "验证 nextcloud 用户认证插件修改..."
-podman exec mysql mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "SELECT user, host, plugin FROM mysql.user WHERE user='nextcloud';"
+podman exec "$MYSQL_CONTAINER_NAME" mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "SELECT user, host, plugin FROM mysql.user WHERE user='nextcloud';"

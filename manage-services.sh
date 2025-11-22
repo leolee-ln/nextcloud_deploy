@@ -8,19 +8,21 @@ if [ -f "$SCRIPT_DIR/config.env" ]; then
     . "$SCRIPT_DIR/config.env"
 fi
 DATA_DIR=${DATA_DIR:-/data_raid1/containers}
+MYSQL_CONTAINER_NAME=${MYSQL_CONTAINER_NAME:-mysql}
+NEXTCLOUD_CONTAINER_NAME=${NEXTCLOUD_CONTAINER_NAME:-nextcloud}
 
 case "$1" in
     start)
         echo "启动所有服务..."
-        podman start mysql nextcloud
+        podman start "$MYSQL_CONTAINER_NAME" "$NEXTCLOUD_CONTAINER_NAME"
         ;;
     stop)
         echo "停止所有服务..."
-        podman stop nextcloud mysql
+        podman stop "$NEXTCLOUD_CONTAINER_NAME" "$MYSQL_CONTAINER_NAME"
         ;;
     restart)
         echo "重启所有服务..."
-        podman restart mysql nextcloud
+        podman restart "$MYSQL_CONTAINER_NAME" "$NEXTCLOUD_CONTAINER_NAME"
         ;;
     status)
         echo "服务状态:"
@@ -30,7 +32,7 @@ case "$1" in
         ;;
     logs)
         echo "服务日志:"
-        podman logs --tail 20 $2
+        podman logs --tail 20 "$2"
         ;;
     backup)
         echo "备份数据..."

@@ -8,6 +8,9 @@ if [ -f "$SCRIPT_DIR/config.env" ]; then
   . "$SCRIPT_DIR/config.env"
 fi
 
+NEXTCLOUD_CONTAINER_NAME=${NEXTCLOUD_CONTAINER_NAME:-nextcloud}
+MYSQL_CONTAINER_NAME=${MYSQL_CONTAINER_NAME:-mysql}
+
 # 拉取 Nextcloud 镜像
 podman pull swr.cn-east-2.myhuaweicloud.com/library/nextcloud:latest
 
@@ -26,8 +29,8 @@ if [ ! -f "$DATA_DIR/nextcloud/ssl/nextcloud.crt" ]; then
 fi
 
 # 停止并清理旧容器
-podman stop nextcloud 2>/dev/null
-podman rm nextcloud 2>/dev/null
+podman stop "$NEXTCLOUD_CONTAINER_NAME" 2>/dev/null || true
+podman rm "$NEXTCLOUD_CONTAINER_NAME" 2>/dev/null || true
 
 # 设置 Nextcloud 管理员
 read -p "请输入 Nextcloud 管理员用户名 (默认: admin): " NC_ADMIN_USER
@@ -66,7 +69,7 @@ echo "启动 Nextcloud 基础容器..."
 mkdir -p "$DATA_DIR"/nextcloud/{data,config,apps,ssl}
 
 podman run -d \
-  --name nextcloud \
+  --name "$NEXTCLOUD_CONTAINER_NAME" \
   --network nextcloud-network \
   -p ${NEXTCLOUD_PORT}:443 \
   -v "$DATA_DIR"/nextcloud/data:/var/www/html/data:Z \
@@ -84,7 +87,7 @@ sleep 30
 
 # 配置 SSL
 echo "配置 SSL..."
-podman exec nextcloud bash -c "
+podman exec "$NEXTCLOUD_CONTAINER_NAME" bash -c "
   a2enmod ssl headers rewrite && \
   cat > /etc/apache2/sites-available/nextcloud-ssl.conf << 'EOF'
 <VirtualHost *:443>
@@ -110,24 +113,24 @@ sleep 10
 
 # 使用 occ 命令手动安装
 echo "使用 occ 命令配置 Nextcloud..."
-podman exec --user www-data nextcloud php /var/www/html/occ maintenance:install \
+podman exec --user www-data "$NEXTCLOUD_CONTAINER_NAME" php /var/www/html/occ maintenance:install \
   --database "mysql" \
   --database-name "nextcloud" \
   --database-user "nextcloud" \
   --database-pass "$MYSQL_PASSWORD" \
-  --database-host "mysql:3306" \
+  --database-host "${MYSQL_CONTAINER_NAME}:3306" \
   --admin-user "$NC_ADMIN_USER" \
   --admin-pass "$NC_ADMIN_PASSWORD" \
   --data-dir "/var/www/html/data"
 
 # 配置信任域名和覆盖 URL
 echo "配置信任域名..."
-podman exec --user www-data nextcloud php /var/www/html/occ config:system:set trusted_domains 1 --value="${NEXTCLOUD_DOMAIN}"
-podman exec --user www-data nextcloud php /var/www/html/occ config:system:set overwrite.cli.url --value="https://${NEXTCLOUD_DOMAIN}:${NEXTCLOUD_PORT}"
-podman exec --user www-data nextcloud php /var/www/html/occ config:system:set overwriteprotocol --value="https"
+podman exec --user www-data "$NEXTCLOUD_CONTAINER_NAME" php /var/www/html/occ config:system:set trusted_domains 1 --value="${NEXTCLOUD_DOMAIN}"
+podman exec --user www-data "$NEXTCLOUD_CONTAINER_NAME" php /var/www/html/occ config:system:set overwrite.cli.url --value="https://${NEXTCLOUD_DOMAIN}:${NEXTCLOUD_PORT}"
+podman exec --user www-data "$NEXTCLOUD_CONTAINER_NAME" php /var/www/html/occ config:system:set overwriteprotocol --value="https"
 
 # 重启 Apache 使所有配置生效
-podman exec nextcloud apache2ctl graceful
+podman exec "$NEXTCLOUD_CONTAINER_NAME" apache2ctl graceful
 
 # 验证服务
 echo "验证 Nextcloud 服务..."
@@ -137,9 +140,9 @@ if curl -k -s https://localhost:${NEXTCLOUD_PORT} > /dev/null; then
     
     # # debug 检查配置是否包含数据库设置
     # echo "检查数据库配置..."
-    # podman exec nextcloud cat /var/www/html/config/config.php | grep db
+    # podman exec "$NEXTCLOUD_CONTAINER_NAME" cat /var/www/html/config/config.php | grep db
 else
-    echo "部署失败，查看日志: podman logs nextcloud"
+    echo "部署失败，查看日志: podman logs $NEXTCLOUD_CONTAINER_NAME"
 fi
 
 echo "Nextcloud 访问地址:"
