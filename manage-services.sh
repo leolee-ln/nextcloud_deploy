@@ -1,6 +1,14 @@
 #!/bin/bash
 echo "=== 容器服务管理 ==="
 
+# Load configuration if present
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/config.env" ]; then
+    # shellcheck disable=SC1090
+    . "$SCRIPT_DIR/config.env"
+fi
+DATA_DIR=${DATA_DIR:-/data_raid1/containers}
+
 case "$1" in
     start)
         echo "启动所有服务..."
@@ -26,8 +34,9 @@ case "$1" in
         ;;
     backup)
         echo "备份数据..."
-        tar -czf /data_raid1/containers/backups/backup-$(date +%Y%m%d).tar.gz /data_raid1/containers/nextcloud /data_raid1/containers/mysql
-        echo "备份完成: /data_raid1/containers/backups/backup-$(date +%Y%m%d).tar.gz"
+        mkdir -p "$DATA_DIR/backups"
+        tar -czf "$DATA_DIR/backups/backup-$(date +%Y%m%d).tar.gz" "$DATA_DIR/nextcloud" "$DATA_DIR/mysql"
+        echo "备份完成: $DATA_DIR/backups/backup-$(date +%Y%m%d).tar.gz"
         ;;
     update)
         echo "更新服务..."

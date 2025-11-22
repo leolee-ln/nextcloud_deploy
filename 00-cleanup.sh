@@ -7,11 +7,18 @@ podman rm nextcloud mysql 2>/dev/null
 podman network rm nextcloud-network 2>/dev/null
 
 # 备份并删除旧数据目录
-if [ -d "/data_raid1/containers/" ]; then
-    echo "备份旧数据到 /data_raid1/backup/..."
-    mkdir -p /data_raid1/backup
-    tar -czf /data_raid1/backup/containers-old-$(date +%Y%m%d).tar.gz /data_raid1/containers/
-    rm -rf /data_raid1/containers/
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/config.env" ]; then
+    # shellcheck disable=SC1090
+    . "$SCRIPT_DIR/config.env"
+fi
+DATA_DIR=${DATA_DIR:-/data_raid1/containers}
+BACKUP_DIR="$(dirname "$DATA_DIR")/backup"
+if [ -d "$DATA_DIR" ]; then
+        echo "备份旧数据到 $BACKUP_DIR/..."
+        mkdir -p "$BACKUP_DIR"
+        tar -czf "$BACKUP_DIR"/containers-old-$(date +%Y%m%d).tar.gz "$DATA_DIR"/
+        rm -rf "$DATA_DIR"/
 fi
 
 echo "清理完成！"

@@ -1,20 +1,27 @@
 #!/bin/bash
 echo "=== 部署 Nextcloud 实例 ==="
 
+# Load configuration if present
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/config.env" ]; then
+  # shellcheck disable=SC1090
+  . "$SCRIPT_DIR/config.env"
+fi
+
 # 拉取 Nextcloud 镜像
 podman pull swr.cn-east-2.myhuaweicloud.com/library/nextcloud:latest
 
 # 读取 MySQL 密码
-MYSQL_PASSWORD=$(grep MYSQL_PASSWORD /data_raid1/containers/secrets/mysql-nextcloud.env | cut -d= -f2)
+MYSQL_PASSWORD=$(grep MYSQL_PASSWORD "$DATA_DIR"/secrets/mysql-nextcloud.env | cut -d= -f2)
 
 # 生成 SSL 证书（如果不存在）
-if [ ! -f "/data_raid1/containers/nextcloud/ssl/nextcloud.crt" ]; then
+if [ ! -f "$DATA_DIR/nextcloud/ssl/nextcloud.crt" ]; then
     echo "生成 SSL 证书..."
-    mkdir -p /data_raid1/containers/nextcloud/ssl
-    cd /data_raid1/containers/nextcloud/ssl
+    mkdir -p "$DATA_DIR/nextcloud/ssl"
+    cd "$DATA_DIR/nextcloud/ssl" || exit 1
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
       -keyout nextcloud.key -out nextcloud.crt \
-      -subj "/C=CN/ST=Beijing/L=Beijing/O=YourOrganization/CN=ic.ismd-nemo.xyz"
+      -subj "/C=CN/ST=Beijing/L=Beijing/O=YourOrganization/CN=${NEXTCLOUD_DOMAIN}"
     chown 1000:1000 nextcloud.key nextcloud.crt
 fi
 
@@ -43,27 +50,31 @@ while true; do
   fi
 done
 
-# debug
-echo "Nextcloud 管理员用户名: $NC_ADMIN_USER"
-echo "Nextcloud 管理员密码: $NC_ADMIN_PASSWORD"
+# # debug
+# echo "Nextcloud 管理员用户名: $NC_ADMIN_USER"
+# echo "Nextcloud 管理员密码: $NC_ADMIN_PASSWORD"
 
 # 清理旧的配置和数据（确保重新安装）
 echo "清理旧配置..."
-rm -rf /data_raid1/containers/nextcloud/config/*
-rm -rf /data_raid1/containers/nextcloud/data/*
+rm -rf "$DATA_DIR"/nextcloud/config/*
+rm -rf "$DATA_DIR"/nextcloud/data/*
 
 # 首先启动一个基础容器（不自动安装）
 echo "启动 Nextcloud 基础容器..."
+
+# Ensure Nextcloud directories exist
+mkdir -p "$DATA_DIR"/nextcloud/{data,config,apps,ssl}
+
 podman run -d \
   --name nextcloud \
   --network nextcloud-network \
-  -p 8443:443 \
-  -v /data_raid1/containers/nextcloud/data:/var/www/html/data:Z \
-  -v /data_raid1/containers/nextcloud/config:/var/www/html/config:Z \
-  -v /data_raid1/containers/nextcloud/apps:/var/www/html/apps:Z \
-  -v /data_raid1/containers/nextcloud/ssl:/etc/ssl/private:Z \
-  -e NEXTCLOUD_TRUSTED_DOMAINS="ic.ismd-nemo.xyz localhost" \
-  -e OVERWRITECLIURL="https://ic.ismd-nemo.xyz:8443" \
+  -p ${NEXTCLOUD_PORT}:443 \
+  -v "$DATA_DIR"/nextcloud/data:/var/www/html/data:Z \
+  -v "$DATA_DIR"/nextcloud/config:/var/www/html/config:Z \
+  -v "$DATA_DIR"/nextcloud/apps:/var/www/html/apps:Z \
+  -v "$DATA_DIR"/nextcloud/ssl:/etc/ssl/private:Z \
+  -e NEXTCLOUD_TRUSTED_DOMAINS="${NEXTCLOUD_DOMAIN} localhost" \
+  -e OVERWRITECLIURL="https://${NEXTCLOUD_DOMAIN}:${NEXTCLOUD_PORT}" \
   -e OVERWRITEPROTOCOL="https" \
   swr.cn-east-2.myhuaweicloud.com/library/nextcloud:latest
 
@@ -77,7 +88,7 @@ podman exec nextcloud bash -c "
   a2enmod ssl headers rewrite && \
   cat > /etc/apache2/sites-available/nextcloud-ssl.conf << 'EOF'
 <VirtualHost *:443>
-  ServerName ic.ismd-nemo.xyz
+  ServerName ${NEXTCLOUD_DOMAIN}
   DocumentRoot /var/www/html
   SSLEngine on
   SSLCertificateFile /etc/ssl/private/nextcloud.crt
@@ -111,8 +122,8 @@ podman exec --user www-data nextcloud php /var/www/html/occ maintenance:install 
 
 # 配置信任域名和覆盖 URL
 echo "配置信任域名..."
-podman exec --user www-data nextcloud php /var/www/html/occ config:system:set trusted_domains 1 --value="ic.ismd-nemo.xyz"
-podman exec --user www-data nextcloud php /var/www/html/occ config:system:set overwrite.cli.url --value="https://ic.ismd-nemo.xyz:8443"
+podman exec --user www-data nextcloud php /var/www/html/occ config:system:set trusted_domains 1 --value="${NEXTCLOUD_DOMAIN}"
+podman exec --user www-data nextcloud php /var/www/html/occ config:system:set overwrite.cli.url --value="https://${NEXTCLOUD_DOMAIN}:${NEXTCLOUD_PORT}"
 podman exec --user www-data nextcloud php /var/www/html/occ config:system:set overwriteprotocol --value="https"
 
 # 重启 Apache 使所有配置生效
@@ -120,17 +131,17 @@ podman exec nextcloud apache2ctl graceful
 
 # 验证服务
 echo "验证 Nextcloud 服务..."
-if curl -k -s https://localhost:8443 > /dev/null; then
-    echo "Nextcloud HTTPS 部署成功!"
-    echo "访问地址: https://ic.ismd-nemo.xyz:8443"
+if curl -k -s https://localhost:${NEXTCLOUD_PORT} > /dev/null; then
+  echo "Nextcloud HTTPS 部署成功!"
+  echo "访问地址: https://${NEXTCLOUD_DOMAIN}:${NEXTCLOUD_PORT}"
     
-    # 检查配置是否包含数据库设置
-    echo "检查数据库配置..."
-    podman exec nextcloud cat /var/www/html/config/config.php | grep db
+    # # debug 检查配置是否包含数据库设置
+    # echo "检查数据库配置..."
+    # podman exec nextcloud cat /var/www/html/config/config.php | grep db
 else
     echo "部署失败，查看日志: podman logs nextcloud"
 fi
 
 echo "Nextcloud 访问地址:"
-echo "https://ic.ismd-nemo.xyz:8443"
-echo "https://localhost:8443"
+echo "https://${NEXTCLOUD_DOMAIN}:${NEXTCLOUD_PORT}"
+echo "https://localhost:${NEXTCLOUD_PORT}"

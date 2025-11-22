@@ -1,13 +1,20 @@
 #!/bin/bash
 echo "=== 部署 MySQL 实例 ==="
 
+# Load configuration if present
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/config.env" ]; then
+  # shellcheck disable=SC1090
+  . "$SCRIPT_DIR/config.env"
+fi
+
 # 拉取 MySQL 镜像
 echo "拉取 MySQL 镜像..."
 podman pull swr.cn-north-1.myhuaweicloud.com/library/mysql:8.0
 
 # 读取密码
-# MYSQL_ROOT_PASSWORD=$(grep MYSQL_ROOT_PASSWORD /data_raid1/containers/secrets/mysql-root.env | cut -d= -f2)
-MYSQL_PASSWORD=$(grep MYSQL_PASSWORD /data_raid1/containers/secrets/mysql-nextcloud.env | cut -d= -f2)
+# MYSQL_ROOT_PASSWORD=$(grep MYSQL_ROOT_PASSWORD "$DATA_DIR"/secrets/mysql-root.env | cut -d= -f2)
+MYSQL_PASSWORD=$(grep MYSQL_PASSWORD "$DATA_DIR"/secrets/mysql-nextcloud.env | cut -d= -f2)
 
 # 设置 MySQL root 密码（输入并确认）
 while true; do
@@ -27,7 +34,8 @@ while true; do
 done
 
 # 创建 MySQL 配置文件
-cat > /data_raid1/containers/mysql/config/custom.cnf <<'EOF'
+[ -d "$DATA_DIR/mysql/config" ] || mkdir -p "$DATA_DIR/mysql/config"
+cat > "$DATA_DIR/mysql/config/custom.cnf" <<'EOF'
 [mysqld]
 default_authentication_plugin=mysql_native_password
 bind-address = 0.0.0.0
@@ -39,18 +47,25 @@ EOF
 
 # 部署 MySQL
 echo "启动 MySQL 容器..."
+
+# Prepare optional host port mapping for MySQL
+MYSQL_PORT_ARGS=()
+if [ -n "$MYSQL_EXPOSE_PORT" ]; then
+  MYSQL_PORT_ARGS=( -p "$MYSQL_EXPOSE_PORT":3306 )
+fi
+
 podman run -d \
   --name mysql \
   --network nextcloud-network \
   --restart unless-stopped \
-  -p 3306:3306 \
-  -v /data_raid1/containers/mysql/data:/var/lib/mysql:Z \
-  -v /data_raid1/containers/mysql/config:/etc/mysql/conf.d:Z \
-  -v /data_raid1/containers/mysql/logs:/var/log/mysql:Z \
-  -e MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD \
+  "${MYSQL_PORT_ARGS[@]}" \
+  -v "$DATA_DIR"/mysql/data:/var/lib/mysql:Z \
+  -v "$DATA_DIR"/mysql/config:/etc/mysql/conf.d:Z \
+  -v "$DATA_DIR"/mysql/logs:/var/log/mysql:Z \
+  -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD" \
   -e MYSQL_DATABASE=nextcloud \
   -e MYSQL_USER=nextcloud \
-  -e MYSQL_PASSWORD=$MYSQL_PASSWORD \
+  -e MYSQL_PASSWORD="$MYSQL_PASSWORD" \
   -e MYSQL_DEFAULT_AUTHENTICATION_PLUGIN=mysql_native_password \
   swr.cn-north-1.myhuaweicloud.com/library/mysql:8.0
 
@@ -64,7 +79,11 @@ podman exec mysql mysql -u root -p$MYSQL_ROOT_PASSWORD -e "SHOW DATABASES;" && \
 echo "MySQL 部署成功！" || echo "MySQL 连接失败，请检查日志"
 
 echo "MySQL 容器名称: mysql"
-echo "MySQL 端口: 3306"
+if [ -n "$MYSQL_EXPOSE_PORT" ]; then
+  echo "MySQL 外部端口: $MYSQL_EXPOSE_PORT"
+else
+  echo "MySQL 未暴露外部端口（仅容器内可访问）"
+fi
 echo "Nextcloud 数据库: nextcloud"
 
 # 修改认证插件
