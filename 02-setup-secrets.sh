@@ -10,10 +10,10 @@ generate_password() {
     openssl rand -base64 16 | tr -d '/+=' | head -c 16
 }
 
-# 设置 MySQL root 密码
-read -s -p "请输入 MySQL root 密码: " MYSQL_ROOT_PASSWORD
-echo
-echo "MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD" | sudo tee $SECRETS_DIR/mysql-root.env
+# # 设置 MySQL root 密码
+# read -s -p "请输入 MySQL root 密码: " MYSQL_ROOT_PASSWORD
+# echo
+# echo "MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD" | sudo tee $SECRETS_DIR/mysql-root.env
 echo "MYSQL_PASSWORD=$(generate_password)" | sudo tee $SECRETS_DIR/mysql-nextcloud.env
 
 # 设置文件权限
