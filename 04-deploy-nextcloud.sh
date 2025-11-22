@@ -25,11 +25,35 @@ podman rm nextcloud 2>/dev/null
 # 设置 Nextcloud 管理员
 read -p "请输入 Nextcloud 管理员用户名 (默认: admin): " NC_ADMIN_USER
 NC_ADMIN_USER=${NC_ADMIN_USER:-admin}
-read -s -p "请输入 Nextcloud 管理员密码: " NC_ADMIN_PASSWORD
-echo
 
-# 部署 Nextcloud
-echo "启动 Nextcloud 容器..."
+# 设置 Nextcloud 管理员密码（输入并确认）
+while true; do
+  read -s -p "请输入 Nextcloud 管理员密码: " NC_ADMIN_PASSWORD
+  echo
+  read -s -p "请再次输入 Nextcloud 管理员密码以确认: " NC_ADMIN_PASSWORD_CONFIRM
+  echo
+  if [ -z "$NC_ADMIN_PASSWORD" ]; then
+    echo "密码不能为空，请重试。"
+    continue
+  fi
+  if [ "$NC_ADMIN_PASSWORD" = "$NC_ADMIN_PASSWORD_CONFIRM" ]; then
+    break
+  else
+    echo "两次输入的密码不匹配，请重试。"
+  fi
+done
+
+# debug
+echo "Nextcloud 管理员用户名: $NC_ADMIN_USER"
+echo "Nextcloud 管理员密码: $NC_ADMIN_PASSWORD"
+
+# 清理旧的配置和数据（确保重新安装）
+echo "清理旧配置..."
+sudo rm -rf /data_raid1/containers/nextcloud/config/*
+sudo rm -rf /data_raid1/containers/nextcloud/data/*
+
+# 首先启动一个基础容器（不自动安装）
+echo "启动 Nextcloud 基础容器..."
 podman run -d \
   --name nextcloud \
   --network nextcloud-network \
@@ -38,21 +62,14 @@ podman run -d \
   -v /data_raid1/containers/nextcloud/config:/var/www/html/config:Z \
   -v /data_raid1/containers/nextcloud/apps:/var/www/html/apps:Z \
   -v /data_raid1/containers/nextcloud/ssl:/etc/ssl/private:Z \
-  -e NEXTCLOUD_ADMIN_USER=$NC_ADMIN_USER \
-  -e NEXTCLOUD_ADMIN_PASSWORD=$NC_ADMIN_PASSWORD \
   -e NEXTCLOUD_TRUSTED_DOMAINS="ic.ismd-nemo.xyz localhost" \
   -e OVERWRITECLIURL="https://ic.ismd-nemo.xyz:8443" \
-  -e NEXTCLOUD_DB_TYPE=mysql \
-  -e NEXTCLOUD_DB_NAME=nextcloud \
-  -e NEXTCLOUD_DB_USER=nextcloud \
-  -e NEXTCLOUD_DB_PASSWORD=$MYSQL_PASSWORD \
-  -e NEXTCLOUD_DB_HOST=mysql:3306 \
   -e OVERWRITEPROTOCOL="https" \
   swr.cn-east-2.myhuaweicloud.com/library/nextcloud:latest
 
 # 等待启动
 echo "等待服务启动..."
-sleep 15
+sleep 30
 
 # 配置 SSL
 echo "配置 SSL..."
@@ -77,14 +94,39 @@ EOF
   apache2ctl graceful
 "
 
-echo "等待 SSL 配置生效..."
+# 等待 SSL 配置生效
 sleep 10
+
+# 使用 occ 命令手动安装
+echo "使用 occ 命令配置 Nextcloud..."
+podman exec --user www-data nextcloud php /var/www/html/occ maintenance:install \
+  --database "mysql" \
+  --database-name "nextcloud" \
+  --database-user "nextcloud" \
+  --database-pass "$MYSQL_PASSWORD" \
+  --database-host "mysql:3306" \
+  --admin-user "$NC_ADMIN_USER" \
+  --admin-pass "$NC_ADMIN_PASSWORD" \
+  --data-dir "/var/www/html/data"
+
+# 配置信任域名和覆盖 URL
+echo "配置信任域名..."
+podman exec --user www-data nextcloud php /var/www/html/occ config:system:set trusted_domains 1 --value="ic.ismd-nemo.xyz"
+podman exec --user www-data nextcloud php /var/www/html/occ config:system:set overwrite.cli.url --value="https://ic.ismd-nemo.xyz:8443"
+podman exec --user www-data nextcloud php /var/www/html/occ config:system:set overwriteprotocol --value="https"
+
+# 重启 Apache 使所有配置生效
+podman exec nextcloud apache2ctl graceful
 
 # 验证服务
 echo "验证 Nextcloud 服务..."
 if curl -k -s https://localhost:8443 > /dev/null; then
     echo "Nextcloud HTTPS 部署成功!"
     echo "访问地址: https://ic.ismd-nemo.xyz:8443"
+    
+    # 检查配置是否包含数据库设置
+    echo "检查数据库配置..."
+    podman exec nextcloud cat /var/www/html/config/config.php | grep db
 else
     echo "部署失败，查看日志: podman logs nextcloud"
 fi
@@ -92,5 +134,3 @@ fi
 echo "Nextcloud 访问地址:"
 echo "https://ic.ismd-nemo.xyz:8443"
 echo "https://localhost:8443"
-echo ""
-echo "请在首次访问时设置管理员密码"

@@ -9,8 +9,22 @@ podman pull swr.cn-north-1.myhuaweicloud.com/library/mysql:8.0
 # MYSQL_ROOT_PASSWORD=$(grep MYSQL_ROOT_PASSWORD /data_raid1/containers/secrets/mysql-root.env | cut -d= -f2)
 MYSQL_PASSWORD=$(grep MYSQL_PASSWORD /data_raid1/containers/secrets/mysql-nextcloud.env | cut -d= -f2)
 
-# 设置 MySQL root 密码
-read -s -p "请输入 MySQL root 密码: " MYSQL_ROOT_PASSWORD
+# 设置 MySQL root 密码（输入并确认）
+while true; do
+  read -s -p "请输入 MySQL root 密码: " MYSQL_ROOT_PASSWORD
+  echo
+  read -s -p "请再次输入 MySQL root 密码以确认: " MYSQL_ROOT_PASSWORD_CONFIRM
+  echo
+  if [ -z "$MYSQL_ROOT_PASSWORD" ]; then
+    echo "密码不能为空，请重试。"
+    continue
+  fi
+  if [ "$MYSQL_ROOT_PASSWORD" = "$MYSQL_ROOT_PASSWORD_CONFIRM" ]; then
+    break
+  else
+    echo "两次输入的密码不匹配，请重试。"
+  fi
+done
 
 # 创建 MySQL 配置文件
 sudo tee /data_raid1/containers/mysql/config/custom.cnf > /dev/null <<'EOF'
