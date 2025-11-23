@@ -24,7 +24,10 @@ if [ ! -f "$DATA_DIR/nextcloud/ssl/nextcloud.crt" ]; then
     cd "$DATA_DIR/nextcloud/ssl" || exit 1
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
       -keyout nextcloud.key -out nextcloud.crt \
-      -subj "/C=CN/ST=Beijing/L=Beijing/O=YourOrganization/CN=${NEXTCLOUD_DOMAIN}"
+      -subj "/C=CN/ST=Beijing/L=Beijing/O=YourOrganization/CN=${NEXTCLOUD_DOMAIN}" \
+      -addext "subjectAltName = DNS:${NEXTCLOUD_DOMAIN}, DNS:localhost, IP:127.0.0.1"
+      -addext "keyUsage = digitalSignature, keyEncipherment" \
+      -addext "extendedKeyUsage = serverAuth"
     chown 1000:1000 nextcloud.key nextcloud.crt
 fi
 
